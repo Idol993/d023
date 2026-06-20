@@ -1,0 +1,144 @@
+system:
+  name: "医药冷链温湿度监控系统版本发布与智能回滚自动化平台"
+  version: "1.0.0"
+  environment: "production"
+  timezone: "Asia/Shanghai"
+
+pre_check:
+  sensor_connectivity:
+    enabled: true
+    heartbeat_timeout_seconds: 30
+    min_connectivity_rate: 0.95
+    iot_nodes_endpoint: "http://iot-gateway.internal:8080/api/v1/nodes/heartbeat"
+  alarm_coverage:
+    enabled: true
+    min_coverage_rate: 0.98
+    required_alarm_levels:
+      - "info"
+      - "warning"
+      - "critical"
+      - "emergency"
+  gsp_compliance:
+    enabled: true
+    temp_threshold_min: 2.0
+    temp_threshold_max: 8.0
+    humidity_threshold_min: 35.0
+    humidity_threshold_max: 75.0
+    require_electronic_signature: true
+    require_audit_trail: true
+  data_upload_stability:
+    enabled: true
+    mqtt_max_latency_ms: 500
+    http_max_latency_ms: 1000
+    max_packet_loss_rate: 0.01
+    baseline_test_duration_seconds: 60
+
+approval:
+  channels:
+    routine:
+      name: "常规迭代"
+      type: "serial"
+      levels:
+        - level: 1
+          role: "quality"
+          name: "质量评审（GSP合规与数据完整性评估）"
+          timeout_minutes: 120
+        - level: 2
+          role: "logistics"
+          name: "物流评审（运输线路与仓储业务影响评估）"
+          timeout_minutes: 120
+        - level: 3
+          role: "quality_head"
+          name: "质量负责人（最终放行与合规责任确认）"
+          timeout_minutes: 60
+    hotfix:
+      name: "紧急热修复"
+      type: "parallel"
+      require_reason: true
+      require_deviation_report: true
+      allow_post_sign: true
+      post_sign_deadline_hours: 24
+      levels:
+        - level: 1
+          role: "quality"
+          name: "质量评审"
+          timeout_minutes: 30
+        - level: 1
+          role: "logistics"
+          name: "物流评审"
+          timeout_minutes: 30
+        - level: 2
+          role: "quality_head"
+          name: "质量负责人最终确认"
+          timeout_minutes: 15
+
+canary_release:
+  enabled: true
+  strategy: "line_based"
+  stages:
+    - name: "灰度阶段1-单线路试点"
+      weight_percent: 5
+      duration_minutes: 30
+      routes:
+        - "ROUTE-BJ-SH-001"
+    - name: "灰度阶段2-区域扩展"
+      weight_percent: 25
+      duration_minutes: 60
+      routes:
+        - "ROUTE-BJ-SH-001"
+        - "ROUTE-SH-GZ-002"
+        - "ROUTE-GZ-CD-003"
+    - name: "灰度阶段3-大规模验证"
+      weight_percent: 50
+      duration_minutes: 90
+      routes: "all"
+    - name: "全量发布"
+      weight_percent: 100
+      duration_minutes: 0
+      routes: "all"
+  circuit_breaker:
+    enabled: true
+    error_rate_threshold: 0.05
+    latency_threshold_ms: 2000
+    min_sample_size: 100
+    check_interval_seconds: 10
+    half_open_retry_count: 3
+    half_open_interval_seconds: 30
+  rollback:
+    auto_rollback_enabled: true
+    max_rollback_versions: 3
+    snapshot_retention_days: 30
+    health_check_endpoint: "http://monitor-gateway.internal:8080/api/v1/health"
+    health_check_timeout_seconds: 15
+    health_check_retries: 3
+
+audit:
+  enabled: true
+  log_retention_days: 365
+  require_electronic_signature: true
+  report_output_dir: "./reports"
+  report_format: "html"
+  metrics_retention_days: 90
+
+notification:
+  enabled: true
+  channels:
+    - type: "email"
+      smtp_host: "smtp.internal.corp"
+      smtp_port: 465
+      use_tls: true
+    - type: "webhook"
+      url: "http://notification-gateway.internal:8080/api/v1/notify"
+    - type: "sms"
+      provider: "internal_sms_gateway"
+
+database:
+  type: "sqlite"
+  path: "./data/release_platform.db"
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s [%(levelname)s] %(name)s - %(message)s"
+  file: "./logs/release_platform.log"
+  max_size_mb: 50
+  backup_count: 10

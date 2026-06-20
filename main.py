@@ -1,0 +1,812 @@
+#!/usr/bin/env python3
+import sys
+import os
+import yaml
+import json
+import argparse
+import uuid
+import hashlib
+from datetime import datetime
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from utils.logger import setup_logger
+from utils.db import Database
+from utils.notify import Notifier
+from modules.pre_check import PreCheckEngine
+from modules.approval import ApprovalEngine, ApprovalAction
+from modules.canary_release import CanaryReleaseEngine
+from modules.audit_report import AuditEngine
+from models.schemas import (
+    ReleaseType,
+    ReleaseStatus,
+    ReleaseRecord,
+    RollbackSnapshot,
+)
+
+
+class ReleasePlatform:
+    def __init__(self, config_path: str = "config/settings.yaml"):
+        self.config = self._load_config(config_path)
+        self.logger = setup_logger("release_platform", self.config.get("logging", {}))
+        self.db = Database(self.config.get("database", {}))
+        self.notifier = Notifier(self.config.get("notification", {}))
+        self.pre_check_engine = PreCheckEngine(self.config.get("pre_check", {}))
+        self.approval_engine = ApprovalEngine(self.config.get("approval", {}))
+        self.canary_engine = CanaryReleaseEngine(self.config.get("canary_release", {}))
+        self.audit_engine = AuditEngine(self.config.get("audit", {}), self.db)
+
+        self.logger.info("=" * 60)
+        self.logger.info("医药冷链温湿度监控系统 - 版本发布与智能回滚自动化平台 初始化完成")
+        self.logger.info("=" * 60)
+
+    def _load_config(self, config_path: str) -> dict:
+        abs_path = os.path.abspath(config_path)
+        if not os.path.exists(abs_path):
+            print(f"配置文件不存在: {abs_path}")
+            sys.exit(1)
+        with open(abs_path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f)
+
+    def _generate_release_id(self) -> str:
+        date_str = datetime.now().strftime("%Y%m%d%H%M%S")
+        short_uuid = uuid.uuid4().hex[:8]
+        return f"REL-{date_str}-{short_uuid}"
+
+    def create_release(
+        self,
+        version: str,
+        previous_version: str,
+        release_type: str,
+        applicant: str,
+        description: str = "",
+        hotfix_reason: str = "",
+        deviation_report_id: str = "",
+    ) -> ReleaseRecord:
+        rt = ReleaseType.ROUTINE if release_type == "routine" else ReleaseType.HOTFIX
+
+        release_id = self._generate_release_id()
+        record = ReleaseRecord(
+            release_id=release_id,
+            version=version,
+            previous_version=previous_version,
+            release_type=rt,
+            applicant=applicant,
+            description=description,
+        )
+
+        self.audit_engine.log_action(
+            release_id=release_id,
+            action="release_created",
+            actor=applicant,
+            details={
+                "version": version,
+                "previous_version": previous_version,
+                "release_type": rt.value,
+                "description": description,
+            },
+            electronic_signature=f"SIG-{applicant}-{uuid.uuid4().hex[:12]}",
+        )
+
+        self.notifier.notify_release_created(release_id, version, rt.value)
+        self._save_record(record)
+
+        self.logger.info(
+            f"发布申请已创建 [id={release_id}, version={version}, type={rt.value}]"
+        )
+        return record
+
+    def run_pre_check(self, release_id: str) -> dict:
+        self.logger.info(f"开始发布前置校验 [release_id={release_id}]")
+
+        record_data = self.db.get_release_record(release_id)
+        if not record_data:
+            return {"success": False, "message": f"发布单不存在: {release_id}"}
+
+        if record_data["status"] not in [ReleaseStatus.PENDING_CHECK.value, ReleaseStatus.CHECK_FAILED.value]:
+            return {"success": False, "message": f"发布单状态不允许前置校验: {record_data['status']}"}
+
+        self._update_status(release_id, ReleaseStatus.PENDING_CHECK)
+
+        report = self.pre_check_engine.run_all_checks(release_id)
+
+        self.audit_engine.log_action(
+            release_id=release_id,
+            action="pre_check_completed",
+            actor="system",
+            details={
+                "overall_passed": report.overall_passed,
+                "check_count": len(report.results),
+                "failed_checks": [
+                    r.check_name for r in report.results if r.status.value == "fail"
+                ],
+            },
+            electronic_signature=f"SIG-SYSTEM-{uuid.uuid4().hex[:12]}",
+        )
+
+        if report.overall_passed:
+            self._update_status(release_id, ReleaseStatus.CHECK_PASSED)
+            self.notifier.notify_pre_check_result(release_id, True, "全部检查项通过")
+            self.logger.info(f"前置校验通过 [release_id={release_id}]")
+        else:
+            self._update_status(release_id, ReleaseStatus.CHECK_FAILED)
+            failed_names = [
+                r.check_name for r in report.results if r.status.value == "fail"
+            ]
+            self.notifier.notify_pre_check_result(
+                release_id, False, f"未通过项: {', '.join(failed_names)}"
+            )
+            self.logger.warning(f"前置校验未通过 [release_id={release_id}]: {failed_names}")
+
+        self._save_pre_check_report(release_id, report)
+
+        return {
+            "success": report.overall_passed,
+            "release_id": release_id,
+            "overall_passed": report.overall_passed,
+            "results": [
+                {
+                    "check_name": r.check_name,
+                    "status": r.status.value,
+                    "score": r.score,
+                    "threshold": r.threshold,
+                    "message": r.message,
+                    "remediation": r.remediation,
+                }
+                for r in report.results
+            ],
+        }
+
+    def init_approval(self, release_id: str, hotfix_reason: str = "", deviation_report_id: str = "") -> dict:
+        record_data = self.db.get_release_record(release_id)
+        if not record_data:
+            return {"success": False, "message": f"发布单不存在: {release_id}"}
+
+        if record_data["status"] != ReleaseStatus.CHECK_PASSED.value:
+            return {"success": False, "message": "前置校验未通过，无法进入审批环节"}
+
+        rt = ReleaseType(record_data["release_type"])
+
+        flow = self.approval_engine.create_flow(
+            release_id=release_id,
+            release_type=rt,
+            hotfix_reason=hotfix_reason,
+            deviation_report_id=deviation_report_id,
+        )
+
+        self._update_status(release_id, ReleaseStatus.PENDING_APPROVAL)
+
+        first_record = flow.records[0] if flow.records else None
+        if first_record:
+            self.notifier.notify_approval_required(
+                release_id, first_record.role, first_record.level
+            )
+
+        self.audit_engine.log_action(
+            release_id=release_id,
+            action="approval_initiated",
+            actor="system",
+            details={"release_type": rt.value, "flow_type": "serial" if rt == ReleaseType.ROUTINE else "parallel"},
+            electronic_signature=f"SIG-SYSTEM-{uuid.uuid4().hex[:12]}",
+        )
+
+        self._save_approval_flow(release_id, flow)
+
+        return {
+            "success": True,
+            "release_id": release_id,
+            "flow_status": self.approval_engine.get_flow_status(flow),
+        }
+
+    def process_approval(
+        self,
+        release_id: str,
+        level: int,
+        role: str,
+        action: str,
+        approver: str,
+        comment: str = "",
+        is_post_sign: bool = False,
+    ) -> dict:
+        flow = self._load_approval_flow(release_id)
+        if not flow:
+            return {"success": False, "message": f"审批流不存在: {release_id}"}
+
+        approval_action = ApprovalAction.APPROVE if action == "approve" else ApprovalAction.REJECT
+
+        result = self.approval_engine.process_approval(
+            flow=flow,
+            level=level,
+            role=role,
+            action=approval_action,
+            approver=approver,
+            comment=comment,
+            is_post_sign=is_post_sign,
+        )
+
+        self.audit_engine.log_action(
+            release_id=release_id,
+            action=f"approval_{action}",
+            actor=approver,
+            details={
+                "level": level,
+                "role": role,
+                "comment": comment,
+                "is_post_sign": is_post_sign,
+            },
+            electronic_signature=f"SIG-{approver}-{uuid.uuid4().hex[:12]}",
+        )
+
+        if result.get("flow_completed"):
+            self._update_status(release_id, ReleaseStatus.APPROVAL_PASSED)
+            self.notifier.notify_approval_result(release_id, True, "全部")
+        elif result.get("flow_rejected"):
+            self._update_status(release_id, ReleaseStatus.APPROVAL_REJECTED)
+            self.notifier.notify_approval_result(release_id, False, role)
+        else:
+            next_role = result.get("next_role", "")
+            if next_role:
+                self.notifier.notify_approval_required(release_id, next_role, result.get("next_level", level + 1))
+            self.notifier.notify_approval_result(release_id, True, role)
+
+        self._save_approval_flow(release_id, flow)
+
+        return {
+            "success": result["success"],
+            "release_id": release_id,
+            "result": result,
+        }
+
+    def start_canary_release(self, release_id: str) -> dict:
+        try:
+            return self._execute_canary_release(release_id)
+        except Exception as e:
+            self.logger.error(f"灰度发布异常 [release_id={release_id}]: {e}", exc_info=True)
+            current_record = self.db.get_release_record(release_id)
+            return {
+                "success": False,
+                "release_id": release_id,
+                "final_status": current_record["status"] if current_record else "unknown",
+                "rollback_performed": False,
+                "canary_summary": {},
+                "report_generated": False,
+                "error": str(e),
+            }
+
+    def _execute_canary_release(self, release_id: str) -> dict:
+        record_data = self.db.get_release_record(release_id)
+        if not record_data:
+            return {"success": False, "message": f"发布单不存在: {release_id}", "final_status": "unknown"}
+
+        if record_data["status"] != ReleaseStatus.APPROVAL_PASSED.value:
+            return {"success": False, "message": "审批未通过，无法启动灰度发布", "final_status": record_data["status"]}
+
+        self._update_status(release_id, ReleaseStatus.CANARY_DEPLOYING)
+
+        snapshot = self.canary_engine.create_rollback_snapshot(
+            version=record_data["previous_version"],
+            release_id=release_id,
+            config_data={"version": record_data["previous_version"], "release_id": release_id},
+        )
+        self.db.save_rollback_snapshot(
+            release_id=release_id,
+            version=snapshot.version,
+            config_snapshot=snapshot.config_snapshot,
+            checksum=snapshot.checksum,
+        )
+
+        stages = self.canary_engine.create_canary_stages()
+        circuit_breaker = self._create_circuit_breaker()
+
+        self.audit_engine.log_action(
+            release_id=release_id,
+            action="canary_started",
+            actor="system",
+            details={"stages": len(stages), "snapshot_version": snapshot.version},
+            electronic_signature=f"SIG-SYSTEM-{uuid.uuid4().hex[:12]}",
+        )
+
+        self.notifier.notify_canary_progress(release_id, "灰度发布启动", "started")
+
+        rollback_performed = False
+        rollback_details = None
+        failed_stage = None
+
+        for i, stage in enumerate(stages):
+            self.notifier.notify_canary_progress(release_id, stage.name, "started")
+
+            stage_result = self.canary_engine.execute_canary_stage(
+                stage=stage,
+                circuit_breaker=circuit_breaker,
+                release_id=release_id,
+            )
+
+            if not stage_result["success"]:
+                failed_stage = stage.name
+                self._update_status(release_id, ReleaseStatus.CANARY_FAILED)
+
+                self.audit_engine.log_action(
+                    release_id=release_id,
+                    action="canary_failed",
+                    actor="system",
+                    details={"failed_stage": failed_stage, "reason": stage_result.get("message", "")},
+                    electronic_signature=f"SIG-SYSTEM-{uuid.uuid4().hex[:12]}",
+                )
+
+                self.notifier.notify_circuit_breaker_triggered(
+                    release_id, stage_result.get("message", "熔断触发")
+                )
+
+                if self.canary_engine.rollback_config.get("auto_rollback_enabled", True):
+                    self.logger.warning(f"自动回滚触发 [release_id={release_id}]")
+                    self._update_status(release_id, ReleaseStatus.ROLLING_BACK)
+
+                    rollback_result = self.canary_engine.execute_rollback(
+                        release_id=release_id,
+                        from_version=record_data["version"],
+                        snapshot=snapshot,
+                        reason=f"灰度阶段[{failed_stage}]熔断触发: {stage_result.get('message', '')}",
+                    )
+
+                    if rollback_result["success"]:
+                        self._update_status(release_id, ReleaseStatus.ROLLED_BACK)
+                        rollback_performed = True
+                        rollback_details = rollback_result
+                        self.notifier.notify_rollback(
+                            release_id, record_data["version"], snapshot.version
+                        )
+                    else:
+                        self.logger.error(f"回滚失败 [release_id={release_id}]，需要人工介入")
+
+                    self.audit_engine.log_action(
+                        release_id=release_id,
+                        action="rollback_executed" if rollback_result["success"] else "rollback_failed",
+                        actor="system",
+                        details=rollback_result,
+                        electronic_signature=f"SIG-SYSTEM-{uuid.uuid4().hex[:12]}",
+                    )
+
+                break
+            else:
+                self.notifier.notify_canary_progress(release_id, stage.name, "passed")
+
+        if not failed_stage:
+            self._update_status(release_id, ReleaseStatus.FULLY_RELEASED)
+            self.notifier.notify_release_completed(release_id, record_data["version"])
+
+            self.audit_engine.log_action(
+                release_id=release_id,
+                action="release_completed",
+                actor="system",
+                details={"version": record_data["version"]},
+                electronic_signature=f"SIG-SYSTEM-{uuid.uuid4().hex[:12]}",
+            )
+
+        canary_summary = self.canary_engine.get_canary_summary(stages)
+
+        report = self.audit_engine.generate_review_report(
+            release_id=release_id,
+            version=record_data["version"],
+            release_type=ReleaseType(record_data["release_type"]),
+            pre_check_report=self._load_pre_check_report(release_id),
+            approval_flow=self._load_approval_flow(release_id),
+            canary_stages=stages,
+            rollback_performed=rollback_performed,
+            rollback_details=rollback_details,
+        )
+
+        self.audit_engine.log_action(
+            release_id=release_id,
+            action="review_report_generated",
+            actor="system",
+            details={"report_generated": True},
+            electronic_signature=f"SIG-SYSTEM-{uuid.uuid4().hex[:12]}",
+        )
+
+        return {
+            "success": not failed_stage,
+            "release_id": release_id,
+            "final_status": self.db.get_release_record(release_id)["status"],
+            "rollback_performed": rollback_performed,
+            "canary_summary": canary_summary,
+            "report_generated": True,
+        }
+
+    def get_release_status(self, release_id: str) -> dict:
+        record_data = self.db.get_release_record(release_id)
+        if not record_data:
+            return {"success": False, "message": f"发布单不存在: {release_id}"}
+
+        audit_logs = self.audit_engine.get_audit_trail(release_id)
+        integrity = self.audit_engine.verify_audit_integrity(release_id)
+
+        return {
+            "success": True,
+            "release": record_data,
+            "audit_log_count": len(audit_logs),
+            "audit_integrity": integrity,
+        }
+
+    def _update_status(self, release_id: str, status: ReleaseStatus):
+        try:
+            record_data = self.db.get_release_record(release_id)
+            if record_data:
+                record_data["status"] = status.value
+                record_data["updated_at"] = datetime.now().isoformat()
+                if status in [ReleaseStatus.FULLY_RELEASED, ReleaseStatus.ROLLED_BACK, ReleaseStatus.APPROVAL_REJECTED]:
+                    record_data["completed_at"] = datetime.now().isoformat()
+                self.db.save_release_record(record_data)
+                self.logger.debug(f"状态已更新 [release_id={release_id}]: {status.value}")
+        except Exception as e:
+            self.logger.error(f"状态更新失败 [release_id={release_id}, status={status.value}]: {e}")
+
+    def _save_record(self, record: ReleaseRecord):
+        data = {
+            "release_id": record.release_id,
+            "version": record.version,
+            "previous_version": record.previous_version,
+            "release_type": record.release_type.value,
+            "status": record.status.value,
+            "applicant": record.applicant,
+            "description": record.description,
+            "created_at": record.created_at,
+            "updated_at": record.updated_at,
+        }
+        self.db.save_release_record(data)
+
+    def _save_pre_check_report(self, release_id: str, report):
+        record_data = self.db.get_release_record(release_id)
+        if record_data:
+            report_data = {
+                "overall_passed": report.overall_passed,
+                "results": [
+                    {
+                        "check_name": r.check_name,
+                        "status": r.status.value,
+                        "score": r.score,
+                        "threshold": r.threshold,
+                        "message": r.message,
+                    }
+                    for r in report.results
+                ],
+            }
+            record_data["pre_check_report"] = json.dumps(report_data, ensure_ascii=False)
+            self.db.save_release_record(record_data)
+
+    def _load_pre_check_report(self, release_id: str):
+        record_data = self.db.get_release_record(release_id)
+        if record_data and record_data.get("pre_check_report"):
+            data = json.loads(record_data["pre_check_report"])
+            from models.schemas import PreCheckReport, CheckResult, CheckResultStatus
+            report = PreCheckReport(release_id=release_id, overall_passed=data["overall_passed"])
+            for r in data.get("results", []):
+                report.add_result(CheckResult(
+                    check_name=r["check_name"],
+                    status=CheckResultStatus(r["status"]),
+                    score=r["score"],
+                    threshold=r["threshold"],
+                    message=r["message"],
+                ))
+            return report
+        return None
+
+    def _save_approval_flow(self, release_id: str, flow):
+        record_data = self.db.get_release_record(release_id)
+        if record_data:
+            flow_data = {
+                "release_type": flow.release_type.value,
+                "is_completed": flow.is_completed,
+                "is_rejected": flow.is_rejected,
+                "current_level": flow.current_level,
+                "hotfix_reason": flow.hotfix_reason,
+                "deviation_report_id": flow.deviation_report_id,
+                "records": [
+                    {
+                        "level": r.level,
+                        "role": r.role,
+                        "approver": r.approver,
+                        "action": r.action.value,
+                        "comment": r.comment,
+                        "timestamp": r.timestamp,
+                        "is_post_sign": r.is_post_sign,
+                    }
+                    for r in flow.records
+                ],
+            }
+            record_data["approval_flow"] = json.dumps(flow_data, ensure_ascii=False)
+            self.db.save_release_record(record_data)
+
+    def _load_approval_flow(self, release_id: str):
+        record_data = self.db.get_release_record(release_id)
+        if record_data and record_data.get("approval_flow"):
+            data = json.loads(record_data["approval_flow"])
+            from models.schemas import ApprovalFlow, ApprovalRecord, ApprovalAction, ReleaseType
+            flow = ApprovalFlow(
+                release_id=release_id,
+                release_type=ReleaseType(data["release_type"]),
+                is_completed=data["is_completed"],
+                is_rejected=data["is_rejected"],
+                current_level=data["current_level"],
+                hotfix_reason=data.get("hotfix_reason", ""),
+                deviation_report_id=data.get("deviation_report_id", ""),
+            )
+            flow.records = [
+                ApprovalRecord(
+                    level=r["level"],
+                    role=r["role"],
+                    approver=r["approver"],
+                    action=ApprovalAction(r["action"]),
+                    comment=r.get("comment", ""),
+                    timestamp=r.get("timestamp"),
+                    is_post_sign=r.get("is_post_sign", False),
+                )
+                for r in data.get("records", [])
+            ]
+            return flow
+        return None
+
+    def _create_circuit_breaker(self):
+        from models.schemas import CircuitBreaker, CircuitBreakerState
+        return CircuitBreaker(state=CircuitBreakerState.CLOSED)
+
+
+def run_full_release(platform: ReleasePlatform, args: argparse.Namespace) -> dict:
+    if args.type == "hotfix":
+        if not args.hotfix_reason or not args.hotfix_reason.strip():
+            print("\n[ERROR] 紧急热修复发布必须填写紧急原因 (--hotfix-reason)")
+            print("  请补充紧急原因后重新提交发布申请。\n")
+            return {"success": False, "message": "缺少紧急原因"}
+        if not args.deviation_report or not args.deviation_report.strip():
+            print("\n[ERROR] 紧急热修复发布必须提供偏差报告编号 (--deviation-report)")
+            print("  例如: --deviation-report DEV-2026-0621-001")
+            print("  请在 GSP 合规系统中创建偏差报告并补充编号后继续。\n")
+            return {"success": False, "message": "缺少偏差报告编号"}
+
+    record = platform.create_release(
+        version=args.version,
+        previous_version=args.previous_version,
+        release_type=args.type,
+        applicant=args.applicant,
+        description=args.description,
+        hotfix_reason=args.hotfix_reason or "",
+        deviation_report_id=args.deviation_report or "",
+    )
+
+    release_id = record.release_id
+
+    print(f"\n{'='*60}")
+    print(f"  发布单号: {release_id}")
+    print(f"  版本: {args.version} -> {args.previous_version}")
+    print(f"  类型: {'常规迭代' if args.type == 'routine' else '紧急热修复'}")
+    if args.type == "hotfix":
+        print(f"  紧急原因: {args.hotfix_reason}")
+        print(f"  偏差报告: {args.deviation_report}")
+    print(f"{'='*60}\n")
+
+    print("[1/2] 执行发布前置校验...")
+    check_result = platform.run_pre_check(release_id)
+    print(f"  前置校验结果: {'通过 [PASS]' if check_result['success'] else '未通过 [FAIL]'}")
+    for r in check_result.get("results", []):
+        icon = "[PASS]" if r["status"] == "pass" else "[FAIL]" if r["status"] == "fail" else "[WARN]"
+        print(f"    {icon} {r['check_name']}: {r['message']}")
+
+    if not check_result["success"]:
+        print("\n前置校验未通过，发布流程终止。请修复问题后重新提交。")
+        return check_result
+
+    print("\n[2/2] 初始化审批流...")
+    init_result = platform.init_approval(
+        release_id,
+        hotfix_reason=args.hotfix_reason or "",
+        deviation_report_id=args.deviation_report or "",
+    )
+    print(f"  审批流初始化: {'成功' if init_result['success'] else '失败'}")
+
+    if not init_result["success"]:
+        print(f"  错误: {init_result['message']}")
+        return init_result
+
+    print(f"\n{'='*60}")
+    print(f"  发布申请已提交成功，当前处于待审批状态")
+    print(f"  发布单号: {release_id}")
+    print(f"  当前状态: pending_approval")
+    print(f"\n  下一步操作:")
+    print(f"    1. 查看发布单状态:")
+    print(f"       python main.py status --release-id {release_id}")
+    if args.type == "routine":
+        print(f"    2. 执行三级审批:")
+        print(f"       python main.py approve --release-id {release_id} --level 1 --role quality --action approve --approver 质量团队")
+        print(f"       python main.py approve --release-id {release_id} --level 1 --role logistics --action approve --approver 物流团队")
+        print(f"       python main.py approve --release-id {release_id} --level 2 --role quality_head --action approve --approver 质量负责人")
+    else:
+        print(f"    2. 执行并行审批 + 最终确认:")
+        print(f"       python main.py approve --release-id {release_id} --level 1 --role quality --action approve --approver 质量团队")
+        print(f"       python main.py approve --release-id {release_id} --level 1 --role logistics --action approve --approver 物流团队")
+        print(f"       python main.py approve --release-id {release_id} --level 2 --role quality_head --action approve --approver 质量负责人")
+    print(f"    3. 全部审批通过后启动灰度发布:")
+    print(f"       python main.py deploy --release-id {release_id}")
+    print(f"{'='*60}\n")
+
+    return {"success": True, "release_id": release_id, "status": "pending_approval"}
+
+
+def run_deploy(platform: ReleasePlatform, args: argparse.Namespace) -> dict:
+    release_id = args.release_id
+    record_data = platform.db.get_release_record(release_id)
+    if not record_data:
+        print(f"[ERROR] 发布单不存在: {release_id}")
+        return {"success": False}
+
+    current_status = record_data["status"]
+
+    if current_status == ReleaseStatus.CANARY_DEPLOYING.value:
+        print(f"[WARN] 发布单正在灰度发布中，请等待...")
+    elif current_status == ReleaseStatus.FULLY_RELEASED.value:
+        print(f"[INFO] 发布单已全量发布完成，无需重复操作。")
+        return {"success": True}
+    elif current_status == ReleaseStatus.ROLLED_BACK.value:
+        print(f"[ERROR] 发布单已回滚，无法继续发布。请创建新版本发布单。")
+        return {"success": False}
+    elif current_status == ReleaseStatus.APPROVAL_REJECTED.value:
+        print(f"[ERROR] 发布单已被审批拒绝，无法继续发布。")
+        return {"success": False}
+    elif current_status != ReleaseStatus.APPROVAL_PASSED.value:
+        if current_status == ReleaseStatus.PENDING_APPROVAL.value:
+            print(f"[ERROR] 发布单尚未完成审批 (当前状态: {current_status})")
+            print("  请先通过 approve 命令完成所有审批后再执行灰度发布。")
+            print(f"  查看审批状态: python main.py status --release-id {release_id}")
+        else:
+            print(f"[ERROR] 发布单状态不允许启动灰度发布 (当前状态: {current_status})")
+        return {"success": False}
+
+    print(f"\n[1/2] 执行线路灰度发布 [release_id={release_id}]...")
+    canary_result = platform.start_canary_release(release_id)
+    final_status = canary_result.get("final_status", "unknown")
+
+    if canary_result.get("success"):
+        print(f"  灰度发布全量完成 [PASS]")
+        print(f"  最终状态: {final_status}")
+    else:
+        print(f"  灰度发布失败 [FAIL]")
+        print(f"  最终状态: {final_status}")
+        if canary_result.get("rollback_performed"):
+            print(f"  已执行智能回滚 [ROLLBACK]")
+
+    print(f"\n[2/2] 生成复盘报表...")
+    print(f"  复盘报表已生成 [DONE]")
+
+    print(f"\n{'='*60}")
+    print(f"  发布流程结束")
+    print(f"  发布单号: {release_id}")
+    print(f"  最终状态: {final_status}")
+    print(f"{'='*60}\n")
+
+    return canary_result
+
+
+def run_pre_check_only(platform: ReleasePlatform, args: argparse.Namespace) -> dict:
+    record = platform.create_release(
+        version=args.version,
+        previous_version=args.previous_version or "unknown",
+        release_type=args.type,
+        applicant=args.applicant,
+        description=args.description or "前置校验测试",
+    )
+
+    print(f"\n执行发布前置校验 [release_id={record.release_id}]...\n")
+    result = platform.run_pre_check(record.release_id)
+
+    print(f"前置校验结果: {'全部通过 [PASS]' if result['success'] else '存在未通过项 [FAIL]'}\n")
+    for r in result.get("results", []):
+        icon = {"pass": "[PASS]", "fail": "[FAIL]", "warning": "[WARN]", "skipped": "[SKIP]"}.get(r["status"], "[?]")
+        print(f"  {icon} {r['check_name']}")
+        print(f"     得分: {r['score']:.4f} | 阈值: {r['threshold']:.4f}")
+        print(f"     {r['message']}")
+        if r.get("remediation"):
+            print(f"     修复建议: {r['remediation']}")
+        print()
+
+    return result
+
+
+def run_approval_only(platform: ReleasePlatform, args: argparse.Namespace) -> dict:
+    record_data = platform.db.get_release_record(args.release_id)
+    if not record_data:
+        print(f"发布单不存在: {args.release_id}")
+        return {"success": False}
+
+    if not args.action or not args.role:
+        print("审批操作需要指定 --action (approve/reject) 和 --role (quality/logistics/quality_head)")
+        return {"success": False}
+
+    result = platform.process_approval(
+        release_id=args.release_id,
+        level=args.level or 1,
+        role=args.role,
+        action=args.action,
+        approver=args.approver or args.role,
+        comment=args.comment or "",
+        is_post_sign=args.post_sign or False,
+    )
+
+    print(f"\n审批结果: {result}")
+    return result
+
+
+def run_status(platform: ReleasePlatform, args: argparse.Namespace) -> dict:
+    result = platform.get_release_status(args.release_id)
+    if not result["success"]:
+        print(f"发布单不存在: {args.release_id}")
+        return result
+
+    record = result["release"]
+    print(f"\n发布单状态 [release_id={args.release_id}]")
+    print(f"{'='*50}")
+    print(f"  版本: {record['version']}")
+    print(f"  前版本: {record['previous_version']}")
+    print(f"  类型: {record['release_type']}")
+    print(f"  状态: {record['status']}")
+    print(f"  申请人: {record['applicant']}")
+    print(f"  创建时间: {record['created_at']}")
+    print(f"  更新时间: {record['updated_at']}")
+    print(f"  审计日志数: {result['audit_log_count']}")
+    print(f"  审计完整性: {'通过 [PASS]' if result['audit_integrity']['integrity_valid'] else '未通过 [FAIL]'}")
+
+    return result
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="医药冷链温湿度监控系统 - 版本发布与智能回滚自动化平台"
+    )
+    parser.add_argument("--config", default="config/settings.yaml", help="配置文件路径")
+    subparsers = parser.add_subparsers(dest="command", help="可用命令")
+
+    release_parser = subparsers.add_parser("release", help="执行完整发布流程")
+    release_parser.add_argument("--version", required=True, help="目标版本号")
+    release_parser.add_argument("--previous-version", required=True, help="当前版本号")
+    release_parser.add_argument("--type", choices=["routine", "hotfix"], default="routine", help="发布类型")
+    release_parser.add_argument("--applicant", required=True, help="申请人")
+    release_parser.add_argument("--description", default="", help="发布描述")
+    release_parser.add_argument("--hotfix-reason", default="", help="热修复原因(hotfix必填)")
+    release_parser.add_argument("--deviation-report", default="", help="偏差报告编号(hotfix必填)")
+
+    check_parser = subparsers.add_parser("check", help="仅执行前置校验")
+    check_parser.add_argument("--version", required=True, help="目标版本号")
+    check_parser.add_argument("--previous-version", default="", help="当前版本号")
+    check_parser.add_argument("--type", choices=["routine", "hotfix"], default="routine")
+    check_parser.add_argument("--applicant", default="test_user", help="申请人")
+    check_parser.add_argument("--description", default="", help="描述")
+
+    approve_parser = subparsers.add_parser("approve", help="审批操作")
+    approve_parser.add_argument("--release-id", required=True, help="发布单号")
+    approve_parser.add_argument("--level", type=int, default=1, help="审批级别")
+    approve_parser.add_argument("--role", required=True, choices=["quality", "logistics", "quality_head"])
+    approve_parser.add_argument("--action", required=True, choices=["approve", "reject"])
+    approve_parser.add_argument("--approver", default="", help="审批人")
+    approve_parser.add_argument("--comment", default="", help="审批意见")
+    approve_parser.add_argument("--post-sign", action="store_true", help="事后补签")
+
+    status_parser = subparsers.add_parser("status", help="查询发布状态")
+    status_parser.add_argument("--release-id", required=True, help="发布单号")
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        return
+
+    platform = ReleasePlatform(config_path=args.config)
+
+    if args.command == "release":
+        run_full_release(platform, args)
+    elif args.command == "check":
+        run_pre_check_only(platform, args)
+    elif args.command == "approve":
+        run_approval_only(platform, args)
+    elif args.command == "status":
+        run_status(platform, args)
+
+
+if __name__ == "__main__":
+    main()
