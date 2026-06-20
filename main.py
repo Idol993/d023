@@ -240,6 +240,16 @@ class ReleasePlatform:
         if result.get("flow_completed"):
             self._update_status(release_id, ReleaseStatus.APPROVAL_PASSED)
             self.notifier.notify_approval_result(release_id, True, "全部")
+            self.audit_engine.log_action(
+                release_id=release_id,
+                action="approval_completed",
+                actor="system",
+                details={
+                    "release_type": flow.release_type.value,
+                    "total_levels": len(flow.records),
+                },
+                electronic_signature=f"SIG-SYSTEM-{uuid.uuid4().hex[:12]}",
+            )
         elif result.get("flow_rejected"):
             self._update_status(release_id, ReleaseStatus.APPROVAL_REJECTED)
             self.notifier.notify_approval_result(release_id, False, role)
@@ -253,6 +263,7 @@ class ReleasePlatform:
 
         return {
             "success": result["success"],
+            "message": result.get("message", ""),
             "release_id": release_id,
             "result": result,
         }
@@ -418,7 +429,10 @@ class ReleasePlatform:
             return {"success": False, "message": f"发布单不存在: {release_id}"}
 
         audit_logs = self.audit_engine.get_audit_trail(release_id)
-        integrity = self.audit_engine.verify_audit_integrity(release_id)
+        integrity = self.audit_engine.verify_audit_integrity(
+            release_id,
+            current_status=record_data.get("status"),
+        )
 
         return {
             "success": True,
@@ -712,24 +726,70 @@ def run_pre_check_only(platform: ReleasePlatform, args: argparse.Namespace) -> d
 def run_approval_only(platform: ReleasePlatform, args: argparse.Namespace) -> dict:
     record_data = platform.db.get_release_record(args.release_id)
     if not record_data:
-        print(f"发布单不存在: {args.release_id}")
+        print(f"[ERROR] 发布单不存在: {args.release_id}")
         return {"success": False}
 
     if not args.action or not args.role:
-        print("审批操作需要指定 --action (approve/reject) 和 --role (quality/logistics/quality_head)")
+        print("[ERROR] 审批操作需要指定 --action (approve/reject) 和 --role (quality/logistics/quality_head)")
         return {"success": False}
+
+    if not args.approver:
+        print("[ERROR] 请指定审批人 --approver")
+        return {"success": False}
+
+    release_type = record_data["release_type"]
+    role_display = ApprovalEngine.APPROVER_MAP.get(args.role, args.role)
+
+    print(f"\n执行审批操作 [release_id={args.release_id}]")
+    print(f"  发布类型: {'常规迭代' if release_type == 'routine' else '紧急热修复'}")
+    print(f"  审批级别: 第{args.level}级")
+    print(f"  审批角色: {role_display}")
+    print(f"  审批操作: {'通过' if args.action == 'approve' else '拒绝'}")
+    print(f"  审批人: {args.approver}")
+    if args.comment:
+        print(f"  审批意见: {args.comment}")
+    if args.post_sign:
+        print(f"  [WARN] 本次为事后补签")
+    print()
 
     result = platform.process_approval(
         release_id=args.release_id,
-        level=args.level or 1,
+        level=args.level,
         role=args.role,
         action=args.action,
-        approver=args.approver or args.role,
-        comment=args.comment or "",
+        approver=args.approver,
+        comment=args.comment,
         is_post_sign=args.post_sign or False,
     )
 
-    print(f"\n审批结果: {result}")
+    if not result["success"]:
+        print(f"[ERROR] 审批失败: {result.get('message', '未知错误')}")
+        print()
+        return result
+
+    action_display = "通过 [PASS]" if args.action == "approve" else "拒绝 [REJECT]"
+    print(f"第{args.level}级 - {role_display} 审批{action_display}\n")
+
+    approval_result = result.get("result", {})
+    if approval_result.get("flow_rejected"):
+        print(f"[INFO] 审批流已被拒绝，发布流程终止。")
+    elif approval_result.get("flow_completed"):
+        print(f"[INFO] 所有审批已全部通过 [PASS]")
+        print(f"  下一步: 启动灰度发布")
+        print(f"     python main.py deploy --release-id {args.release_id}")
+    else:
+        pending = approval_result.get("pending_roles")
+        if pending:
+            print(f"[INFO] 仍有待审批角色: {pending}")
+        else:
+            next_role = approval_result.get("next_role")
+            next_level = approval_result.get("next_level")
+            if next_role and next_level:
+                next_display = ApprovalEngine.APPROVER_MAP.get(next_role, next_role)
+                print(f"[INFO] 下一步: 第{next_level}级审批")
+                print(f"     python main.py approve --release-id {args.release_id} --level {next_level} --role {next_role} --action approve --approver '{next_display}'")
+
+    print()
     return result
 
 
@@ -744,13 +804,18 @@ def run_status(platform: ReleasePlatform, args: argparse.Namespace) -> dict:
     print(f"{'='*50}")
     print(f"  版本: {record['version']}")
     print(f"  前版本: {record['previous_version']}")
-    print(f"  类型: {record['release_type']}")
+    print(f"  类型: {'常规迭代' if record['release_type'] == 'routine' else '紧急热修复'}")
     print(f"  状态: {record['status']}")
     print(f"  申请人: {record['applicant']}")
     print(f"  创建时间: {record['created_at']}")
     print(f"  更新时间: {record['updated_at']}")
     print(f"  审计日志数: {result['audit_log_count']}")
-    print(f"  审计完整性: {'通过 [PASS]' if result['audit_integrity']['integrity_valid'] else '未通过 [FAIL]'}")
+    integrity = result["audit_integrity"]
+    print(f"  审计完整性: {'通过 [PASS]' if integrity['integrity_valid'] else '未通过 [FAIL]'}")
+    if not integrity["integrity_valid"] and integrity.get("issues"):
+        for issue in integrity["issues"]:
+            print(f"    - {issue}")
+    print(f"{'='*50}\n")
 
     return result
 
@@ -790,6 +855,9 @@ def main():
     status_parser = subparsers.add_parser("status", help="查询发布状态")
     status_parser.add_argument("--release-id", required=True, help="发布单号")
 
+    deploy_parser = subparsers.add_parser("deploy", help="审批通过后执行灰度发布")
+    deploy_parser.add_argument("--release-id", required=True, help="发布单号")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -806,6 +874,8 @@ def main():
         run_approval_only(platform, args)
     elif args.command == "status":
         run_status(platform, args)
+    elif args.command == "deploy":
+        run_deploy(platform, args)
 
 
 if __name__ == "__main__":

@@ -110,6 +110,10 @@ class ApprovalEngine:
         if not serial_validation["valid"]:
             return {"success": False, "message": serial_validation["message"]}
 
+        parallel_validation = self._validate_parallel_flow(flow, level, execution_type)
+        if not parallel_validation["valid"]:
+            return {"success": False, "message": parallel_validation["message"]}
+
         if channel_key == self.HOTFIX_FLOW and is_post_sign:
             if not flow.hotfix_reason:
                 return {"success": False, "message": "事后补签必须关联紧急原因"}
@@ -150,6 +154,36 @@ class ApprovalEngine:
                 return {
                     "valid": False,
                     "message": f"串行审批: 第{record.level}级({record.role})已拒绝",
+                }
+
+        return {"valid": True}
+
+    def _validate_parallel_flow(self, flow: ApprovalFlow, current_level: int, flow_type: str) -> dict:
+        if flow_type != "parallel":
+            return {"valid": True}
+
+        level_groups = {}
+        for record in flow.records:
+            level_groups.setdefault(record.level, []).append(record)
+
+        sorted_levels = sorted(level_groups.keys())
+        for lvl in sorted_levels:
+            if lvl >= current_level:
+                break
+            level_records = level_groups[lvl]
+            pending = [r.role for r in level_records if r.action == ApprovalAction.PENDING]
+            rejected = [r.role for r in level_records if r.action == ApprovalAction.REJECT]
+
+            if rejected:
+                return {
+                    "valid": False,
+                    "message": f"并行审批: 第{lvl}级审批已被拒绝: {rejected}",
+                }
+            if pending:
+                display_pending = [self.APPROVER_MAP.get(p, p) for p in pending]
+                return {
+                    "valid": False,
+                    "message": f"并行审批: 第{lvl}级审批尚未完成，待审批: {display_pending}。请先完成前置级别的所有审批后，再执行当前级别审批。",
                 }
 
         return {"valid": True}

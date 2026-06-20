@@ -59,8 +59,8 @@ class AuditEngine:
             return self.db.get_audit_logs(release_id=release_id)
         return []
 
-    def verify_audit_integrity(self, release_id: str) -> Dict[str, Any]:
-        self.logger.info(f"验证审计完整性 [release_id={release_id}]")
+    def verify_audit_integrity(self, release_id: str, current_status: str = None) -> Dict[str, Any]:
+        self.logger.info(f"验证审计完整性 [release_id={release_id}, status={current_status}]")
 
         logs = self.get_audit_trail(release_id)
 
@@ -69,12 +69,31 @@ class AuditEngine:
         if not logs:
             integrity_issues.append("无审计日志记录")
 
-        required_actions = [
-            "release_created",
-            "pre_check_completed",
-            "approval_completed",
-            "canary_started",
-        ]
+        required_actions = ["release_created", "pre_check_completed"]
+
+        if current_status:
+            needs_approval = [
+                "approval_passed", "canary_deploying",
+                "canary_completed", "fully_released",
+                "release_completed", "approval_rejected",
+            ]
+            if current_status in needs_approval:
+                required_actions.append("approval_completed")
+
+            needs_canary = [
+                "canary_deploying", "canary_completed",
+                "fully_released", "release_completed", "rolled_back",
+            ]
+            if current_status in needs_canary:
+                required_actions.append("canary_started")
+
+            needs_release = ["fully_released", "release_completed"]
+            if current_status in needs_release:
+                required_actions.append("release_completed")
+
+            needs_report = ["fully_released", "release_completed"]
+            if current_status in needs_report:
+                required_actions.append("review_report_generated")
 
         existing_actions = {log.get("action") for log in logs}
         for action in required_actions:
