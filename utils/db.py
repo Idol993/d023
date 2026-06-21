@@ -165,7 +165,16 @@ class Database:
                 "SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT ?",
                 (limit,),
             ).fetchall()
-        return [dict(r) for r in rows]
+        results = []
+        for r in rows:
+            d = dict(r)
+            if "details" in d and isinstance(d["details"], str) and d["details"]:
+                try:
+                    d["details"] = json.loads(d["details"])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            results.append(d)
+        return results
 
     def save_rollback_snapshot(
         self, release_id: str, version: str, config_snapshot: Dict[str, Any], checksum: str = ""

@@ -81,6 +81,8 @@ class ApprovalRecord:
     comment: str = ""
     timestamp: Optional[str] = None
     is_post_sign: bool = False
+    deadline: Optional[str] = None
+    timeout_minutes: int = 0
 
 
 @dataclass

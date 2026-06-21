@@ -62,19 +62,23 @@ class ApprovalEngine:
         records = []
         levels = channel.get("levels", [])
         flow_type = channel.get("type", "serial")
+        now = datetime.now()
 
         for level_conf in levels:
+            timeout_minutes = level_conf.get("timeout_minutes", 0)
+            deadline_iso = None
+            if timeout_minutes > 0:
+                from datetime import timedelta
+                deadline_iso = (now + timedelta(minutes=timeout_minutes)).isoformat()
+
             record = ApprovalRecord(
                 level=level_conf["level"],
                 role=level_conf["role"],
                 approver=self.APPROVER_MAP.get(level_conf["role"], level_conf["role"]),
+                timeout_minutes=timeout_minutes,
+                deadline=deadline_iso,
             )
             records.append(record)
-
-        if flow_type == "serial":
-            for i, record in enumerate(records):
-                if record.level > 1:
-                    pass
 
         return records
 
@@ -122,6 +126,8 @@ class ApprovalEngine:
         target_record.comment = comment
         target_record.timestamp = datetime.now().isoformat()
         target_record.is_post_sign = is_post_sign
+        if approver:
+            target_record.approver = approver
 
         self.logger.info(
             f"审批操作 [release_id={flow.release_id}]: level={level}, role={role}, "
@@ -268,6 +274,8 @@ class ApprovalEngine:
                 "comment": record.comment,
                 "timestamp": record.timestamp,
                 "is_post_sign": record.is_post_sign,
+                "timeout_minutes": record.timeout_minutes,
+                "deadline": record.deadline,
             })
 
         if flow.release_type == ReleaseType.HOTFIX:

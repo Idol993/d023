@@ -1,0 +1,232 @@
+{
+  "release_id": "REL-20260621083621-096844c4",
+  "version": "2.4.0",
+  "previous_version": "2.3.0",
+  "release_type": "hotfix",
+  "status": "fully_released",
+  "applicant": "tester3",
+  "created_at": "2026-06-21T08:36:21.923942",
+  "exported_at": "2026-06-21T08:39:31.308926",
+  "total_entries": 11,
+  "meta": {
+    "filters": {
+      "action": "",
+      "since": "",
+      "until": ""
+    },
+    "approval_summary": [
+      {
+        "level": 1,
+        "role": "quality",
+        "role_display": "质量团队-GSP合规与数据完整性评估",
+        "approver": "孙主管",
+        "action": "approve",
+        "timestamp": "2026-06-21T08:37:28.691353",
+        "comment": "合规检查通过",
+        "timeout_minutes": 30,
+        "deadline": "2026-06-21T09:06:21.935756",
+        "overdue": false
+      },
+      {
+        "level": 1,
+        "role": "logistics",
+        "role_display": "物流团队-运输线路与仓储业务影响评估",
+        "approver": "周经理",
+        "action": "approve",
+        "timestamp": "2026-06-21T08:37:28.811338",
+        "comment": "运输线路已评估",
+        "timeout_minutes": 30,
+        "deadline": "2026-06-21T09:06:21.935756",
+        "overdue": false
+      },
+      {
+        "level": 2,
+        "role": "quality_head",
+        "role_display": "质量负责人-最终放行与合规责任确认",
+        "approver": "赵总监",
+        "action": "approve",
+        "timestamp": "2026-06-21T08:37:28.930263",
+        "comment": "符合GSP要求，最终放行",
+        "timeout_minutes": 15,
+        "deadline": "2026-06-21T08:51:21.935756",
+        "overdue": false
+      }
+    ],
+    "canary_summary": [],
+    "audit_integrity": {
+      "release_id": "REL-20260621083621-096844c4",
+      "integrity_valid": true,
+      "total_log_entries": 11,
+      "issues": [],
+      "verified_at": "2026-06-21T08:39:31.308915"
+    }
+  },
+  "audit_trail": [
+    {
+      "timestamp": "2026-06-21T08:36:21.923981",
+      "action": "release_created",
+      "action_display": "创建发布单",
+      "category": "创建",
+      "actor": "tester3",
+      "details": {
+        "version": "2.4.0",
+        "previous_version": "2.3.0",
+        "release_type": "hotfix",
+        "description": ""
+      },
+      "electronic_signature": "SIG-tester3-9290e8d74eaa"
+    },
+    {
+      "timestamp": "2026-06-21T08:36:21.931404",
+      "action": "pre_check_completed",
+      "action_display": "前置校验完成",
+      "category": "校验",
+      "actor": "system",
+      "details": {
+        "overall_passed": true,
+        "check_count": 4,
+        "failed_checks": []
+      },
+      "electronic_signature": "SIG-SYSTEM-cfe7762b07a2"
+    },
+    {
+      "timestamp": "2026-06-21T08:36:21.937289",
+      "action": "approval_initiated",
+      "action_display": "审批流初始化",
+      "category": "审批",
+      "actor": "system",
+      "details": {
+        "release_type": "hotfix",
+        "flow_type": "parallel"
+      },
+      "electronic_signature": "SIG-SYSTEM-b56013983937"
+    },
+    {
+      "timestamp": "2026-06-21T08:37:28.569504",
+      "action": "reminder_sent",
+      "action_display": "催办通知",
+      "category": "催办",
+      "actor": "发布管理员",
+      "details": {
+        "reminded_count": 3,
+        "reminded_targets": [
+          {
+            "level": 1,
+            "role": "quality",
+            "role_display": "质量团队-GSP合规与数据完整性评估",
+            "approver": "质量团队-GSP合规与数据完整性评估",
+            "overdue": false,
+            "deadline": "2026-06-21T09:06:21.935756"
+          },
+          {
+            "level": 1,
+            "role": "logistics",
+            "role_display": "物流团队-运输线路与仓储业务影响评估",
+            "approver": "物流团队-运输线路与仓储业务影响评估",
+            "overdue": false,
+            "deadline": "2026-06-21T09:06:21.935756"
+          },
+          {
+            "level": 2,
+            "role": "quality_head",
+            "role_display": "质量负责人-最终放行与合规责任确认",
+            "approver": "质量负责人-最终放行与合规责任确认",
+            "overdue": false,
+            "deadline": "2026-06-21T08:51:21.935756"
+          }
+        ],
+        "operator": "发布管理员",
+        "reason": "紧急告警影响业务，需立刻审批"
+      },
+      "electronic_signature": "SIG-REMIND-67111e03c828"
+    },
+    {
+      "timestamp": "2026-06-21T08:37:28.691412",
+      "action": "approval_approve",
+      "action_display": "审批通过",
+      "category": "审批",
+      "actor": "孙主管",
+      "details": {
+        "level": 1,
+        "role": "quality",
+        "comment": "合规检查通过",
+        "is_post_sign": false
+      },
+      "electronic_signature": "SIG-孙主管-bbd9b0fe5ded"
+    },
+    {
+      "timestamp": "2026-06-21T08:37:28.811398",
+      "action": "approval_approve",
+      "action_display": "审批通过",
+      "category": "审批",
+      "actor": "周经理",
+      "details": {
+        "level": 1,
+        "role": "logistics",
+        "comment": "运输线路已评估",
+        "is_post_sign": false
+      },
+      "electronic_signature": "SIG-周经理-ac37b2bc16df"
+    },
+    {
+      "timestamp": "2026-06-21T08:37:28.930323",
+      "action": "approval_approve",
+      "action_display": "审批通过",
+      "category": "审批",
+      "actor": "赵总监",
+      "details": {
+        "level": 2,
+        "role": "quality_head",
+        "comment": "符合GSP要求，最终放行",
+        "is_post_sign": false
+      },
+      "electronic_signature": "SIG-赵总监-beffc8888085"
+    },
+    {
+      "timestamp": "2026-06-21T08:37:28.936347",
+      "action": "approval_completed",
+      "action_display": "审批流完成",
+      "category": "审批",
+      "actor": "system",
+      "details": {
+        "release_type": "hotfix",
+        "total_levels": 3
+      },
+      "electronic_signature": "SIG-SYSTEM-388c0c3004ae"
+    },
+    {
+      "timestamp": "2026-06-21T08:38:26.495833",
+      "action": "canary_started",
+      "action_display": "灰度发布启动",
+      "category": "发布",
+      "actor": "system",
+      "details": {
+        "stages": 4,
+        "snapshot_version": "2.3.0"
+      },
+      "electronic_signature": "SIG-SYSTEM-af339c0b658c"
+    },
+    {
+      "timestamp": "2026-06-21T08:38:29.817599",
+      "action": "release_completed",
+      "action_display": "发布完成",
+      "category": "发布",
+      "actor": "system",
+      "details": {
+        "version": "2.4.0"
+      },
+      "electronic_signature": "SIG-SYSTEM-db3eb374ff5d"
+    },
+    {
+      "timestamp": "2026-06-21T08:38:29.820885",
+      "action": "review_report_generated",
+      "action_display": "复盘报表生成",
+      "category": "报表",
+      "actor": "system",
+      "details": {
+        "report_generated": true
+      },
+      "electronic_signature": "SIG-SYSTEM-fce0ad2664d5"
+    }
+  ]
+}

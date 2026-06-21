@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>审计明细 - REL-20260621083621-096844c4</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Microsoft YaHei', sans-serif; background: #f5f7fa; color: #333; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .header { background: linear-gradient(135deg, #1a5276, #2980b9); color: white; padding: 30px; border-radius: 8px 8px 0 0; }
+        .header h1 { font-size: 24px; margin-bottom: 10px; }
+        .header .meta { font-size: 14px; opacity: 0.9; }
+        .section { background: white; margin: 16px 0; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); overflow: hidden; }
+        .section-title { background: #f8f9fa; padding: 16px 24px; font-size: 18px; font-weight: bold; border-bottom: 2px solid #2980b9; color: #1a5276; }
+        .section-body { padding: 24px; }
+        table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+        th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #f8f9fa; font-weight: 600; color: #555; white-space: nowrap; }
+        .badge { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+        .badge-pass { background: #d5f5e3; color: #1e8449; }
+        .badge-fail { background: #fadbd8; color: #c0392b; }
+        .badge-warn { background: #fef9e7; color: #b7950b; }
+        .badge-info { background: #d6eaf8; color: #2471a3; }
+        .footer { text-align: center; padding: 20px; color: #7f8c8d; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>审计明细导出</h1>
+            <div class="meta">
+                发布单号: REL-20260621083621-096844c4 | 版本: 2.4.0 |
+                前版本: 2.3.0 |
+                类型: 紧急热修复 |
+                状态: fully_released |
+                导出时间: 2026-06-21T08:39:31.447017
+            </div>
+        </div>
+        <div style="background:#fff9db;padding:12px;border-radius:6px;margin-bottom:16px;">筛选条件: <b>action</b>: approval_approve,reminder_sent</div>
+        <div class="section">
+            <div class="section-title">审计完整性校验</div>
+            <div class="section-body">
+                <div style="font-size:16px;">完整性结果: <span class="badge badge-pass">通过</span></div>
+                
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">审批链路摘要 (共 3 个节点)</div>
+            <div class="section-body">
+                <table>
+                    <thead><tr><th>级别</th><th>角色</th><th>状态</th><th>审批人</th><th>审批时间</th><th>截止时间</th><th>意见</th></tr></thead>
+                    <tbody>
+            <tr>
+                <td>第1级</td>
+                <td>质量团队-GSP合规与数据完整性评估 (quality)</td>
+                <td><span class="badge badge-pass">通过</span></td>
+                <td>孙主管</td>
+                <td>2026-06-21T08:37:28.691353</td>
+                <td>2026-06-21T09:06:21.935756</td>
+                <td>合规检查通过</td>
+            </tr>
+            <tr>
+                <td>第1级</td>
+                <td>物流团队-运输线路与仓储业务影响评估 (logistics)</td>
+                <td><span class="badge badge-pass">通过</span></td>
+                <td>周经理</td>
+                <td>2026-06-21T08:37:28.811338</td>
+                <td>2026-06-21T09:06:21.935756</td>
+                <td>运输线路已评估</td>
+            </tr>
+            <tr>
+                <td>第2级</td>
+                <td>质量负责人-最终放行与合规责任确认 (quality_head)</td>
+                <td><span class="badge badge-pass">通过</span></td>
+                <td>赵总监</td>
+                <td>2026-06-21T08:37:28.930263</td>
+                <td>2026-06-21T08:51:21.935756</td>
+                <td>符合GSP要求，最终放行</td>
+            </tr></tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">审计事件明细 (共 4 条)</div>
+            <div class="section-body">
+                <table>
+                    <thead><tr><th>时间</th><th>分类</th><th>事件</th><th>action</th><th>操作人</th><th>详情</th><th>电子签名</th></tr></thead>
+                    <tbody>
+            <tr>
+                <td>2026-06-21T08:37:28.569504</td>
+                <td><span class="badge badge-warn">催办</span></td>
+                <td>催办通知</td>
+                <td>reminder_sent</td>
+                <td>发布管理员</td>
+                <td>{"reminded_count": 3, "reminded_targets": [{"level": 1, "role": "quality", "role_display": "质量团队-GSP合规与数据完整性评估", "approver": "质量团队-GSP合规与数据完整性评估", "overdue": false, "deadline": "2026-06-21T09:06:21.935756"}, {"level": 1, "role": "logistics", "role_display": "物流团队-运输线路与仓储业务影响评估", "approver": "物流团队-运输线路与仓储业务影响评估", "overdue": false, "deadline": "2026-06-21T09:06:21.935756"}, {"level": 2, "role": "quality_head", "role_display": "质量负责人-最终放行与合规责任确认", "approver": "质量负责人-最终放行与合规责任确认", "overdue": false, "deadline": "2026-06-21T08:51:21.935756"}], "operator": "发布管理员", "reason": "紧急告警影响业务，需立刻审批"}</td>
+                <td>SIG-REMIND-67111e03c828</td>
+            </tr>
+            <tr>
+                <td>2026-06-21T08:37:28.691412</td>
+                <td><span class="badge badge-warn">审批</span></td>
+                <td>审批通过</td>
+                <td>approval_approve</td>
+                <td>孙主管</td>
+                <td>{"level": 1, "role": "quality", "comment": "合规检查通过", "is_post_sign": false}</td>
+                <td>SIG-孙主管-bbd9b0fe5ded</td>
+            </tr>
+            <tr>
+                <td>2026-06-21T08:37:28.811398</td>
+                <td><span class="badge badge-warn">审批</span></td>
+                <td>审批通过</td>
+                <td>approval_approve</td>
+                <td>周经理</td>
+                <td>{"level": 1, "role": "logistics", "comment": "运输线路已评估", "is_post_sign": false}</td>
+                <td>SIG-周经理-ac37b2bc16df</td>
+            </tr>
+            <tr>
+                <td>2026-06-21T08:37:28.930323</td>
+                <td><span class="badge badge-warn">审批</span></td>
+                <td>审批通过</td>
+                <td>approval_approve</td>
+                <td>赵总监</td>
+                <td>{"level": 2, "role": "quality_head", "comment": "符合GSP要求，最终放行", "is_post_sign": false}</td>
+                <td>SIG-赵总监-beffc8888085</td>
+            </tr></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="footer">本报表由医药冷链温湿度监控系统版本发布与智能回滚自动化平台自动生成 | 符合GSP合规审计要求</div>
+    </div>
+</body>
+</html>

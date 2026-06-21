@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>发布复盘报表 - REL-20260621083621-096844c4</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Microsoft YaHei', sans-serif; background: #f5f7fa; color: #333; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .header { background: linear-gradient(135deg, #1a5276, #2980b9); color: white; padding: 30px; border-radius: 8px 8px 0 0; }
+        .header h1 { font-size: 24px; margin-bottom: 10px; }
+        .header .meta { font-size: 14px; opacity: 0.9; }
+        .section { background: white; margin: 16px 0; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); overflow: hidden; }
+        .section-title { background: #f8f9fa; padding: 16px 24px; font-size: 18px; font-weight: bold; border-bottom: 2px solid #2980b9; color: #1a5276; }
+        .section-body { padding: 24px; }
+        table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+        th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #f8f9fa; font-weight: 600; color: #555; }
+        .badge { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+        .badge-pass { background: #d5f5e3; color: #1e8449; }
+        .badge-fail { background: #fadbd8; color: #c0392b; }
+        .badge-warn { background: #fef9e7; color: #b7950b; }
+        .badge-info { background: #d6eaf8; color: #2471a3; }
+        .metric-card { display: inline-block; background: #f8f9fa; padding: 16px 24px; border-radius: 8px; margin: 8px; text-align: center; }
+        .metric-value { font-size: 28px; font-weight: bold; color: #1a5276; }
+        .metric-label { font-size: 12px; color: #7f8c8d; margin-top: 4px; }
+        .compliance-item { padding: 12px 16px; margin: 8px 0; border-left: 4px solid #2980b9; background: #f8f9fa; border-radius: 0 4px 4px 0; }
+        .compliance-warning { border-left-color: #e74c3c; }
+        .footer { text-align: center; padding: 20px; color: #7f8c8d; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>医药冷链温湿度监控系统 - 发布复盘报表</h1>
+            <div class="meta">
+                发布单号: REL-20260621083621-096844c4 | 版本: 2.4.0 |
+                发布类型: 紧急热修复 |
+                生成时间: 2026-06-21T08:38:29.819682
+            </div>
+        </div>
+
+        
+        <div class="section">
+            <div class="section-title">一、发布前置校验结果</div>
+            <div class="section-body">
+                <div style="margin-bottom:16px;">
+                    <span class="badge badge-pass" style="font-size:16px;">综合结果: 全部通过</span>
+                    <span style="margin-left:20px;">通过: 4 | 未通过: 0 | 告警: 0 | 跳过: 0</span>
+                </div>
+                <table>
+                    <thead><tr><th>检查项</th><th>状态</th><th>得分</th><th>阈值</th><th>详情</th><th>修复建议</th></tr></thead>
+                    <tbody>
+                <tr>
+                    <td>传感器连通率检查</td>
+                    <td><span class="badge badge-pass">PASS</span></td>
+                    <td>0.9703</td>
+                    <td>0.9500</td>
+                    <td>传感器连通率: 97.03% (阈值: 95.00%)</td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td>冷链告警覆盖率检查</td>
+                    <td><span class="badge badge-pass">PASS</span></td>
+                    <td>0.9900</td>
+                    <td>0.9800</td>
+                    <td>告警覆盖率: 99.00%, 告警级别完整性: 完整</td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td>GSP合规性校验</td>
+                    <td><span class="badge badge-pass">PASS</span></td>
+                    <td>1.0000</td>
+                    <td>1.0000</td>
+                    <td>GSP合规性校验: 通过, 发现 0 项违规</td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td>数据上传稳定性检查</td>
+                    <td><span class="badge badge-pass">PASS</span></td>
+                    <td>1.0000</td>
+                    <td>1.0000</td>
+                    <td>数据上传稳定性: 通过</td>
+                    <td></td>
+                </tr></tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">二、审批流转记录</div>
+            <div class="section-body">
+                
+                <div style="margin-bottom:12px; padding:12px; background:#fef9e7; border-left:4px solid #f39c12; border-radius:4px;">
+                    <strong>紧急热修复信息</strong><br>
+                    紧急原因: 上海仓03区冷链传感器超时告警紧急修复<br>
+                    偏差报告编号: DEV-2026-0621-004<br>
+                    事后补签数量: 0
+                </div>
+                <table>
+                    <thead><tr><th>审批级别</th><th>审批角色</th><th>审批结果</th><th>审批意见</th><th>审批时间</th></tr></thead>
+                    <tbody>
+                <tr>
+                    <td>第1级</td>
+                    <td>quality</td>
+                    <td><span class="badge badge-pass">APPROVE</span></td>
+                    <td>合规检查通过</td>
+                    <td>2026-06-21T08:37:28.691353</td>
+                </tr>
+                <tr>
+                    <td>第1级</td>
+                    <td>logistics</td>
+                    <td><span class="badge badge-pass">APPROVE</span></td>
+                    <td>运输线路已评估</td>
+                    <td>2026-06-21T08:37:28.811338</td>
+                </tr>
+                <tr>
+                    <td>第2级</td>
+                    <td>quality_head</td>
+                    <td><span class="badge badge-pass">APPROVE</span></td>
+                    <td>符合GSP要求，最终放行</td>
+                    <td>2026-06-21T08:37:28.930263</td>
+                </tr></tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">三、灰度发布与熔断机制</div>
+            <div class="section-body">
+                <div style="margin-bottom:16px;">
+                    <div class="metric-card"><div class="metric-value">4</div><div class="metric-label">总阶段数</div></div>
+                    <div class="metric-card"><div class="metric-value">4</div><div class="metric-label">通过阶段</div></div>
+                    <div class="metric-card"><div class="metric-value">0</div><div class="metric-label">失败阶段</div></div>
+                </div>
+                <table>
+                    <thead><tr><th>阶段</th><th>流量比例</th><th>状态</th><th>持续时间</th><th>关键指标</th></tr></thead>
+                    <tbody>
+                <tr>
+                    <td>灰度阶段1-单线路试点</td>
+                    <td>5%</td>
+                    <td><span class="badge badge-pass">PASSED</span></td>
+                    <td>30分钟</td>
+                    <td>请求量: 100, 错误率: 0.0000%, 平均延迟: 825ms</td>
+                </tr>
+                <tr>
+                    <td>灰度阶段2-区域扩展</td>
+                    <td>25%</td>
+                    <td><span class="badge badge-pass">PASSED</span></td>
+                    <td>60分钟</td>
+                    <td>请求量: 250, 错误率: 0.0000%, 平均延迟: 813ms</td>
+                </tr>
+                <tr>
+                    <td>灰度阶段3-大规模验证</td>
+                    <td>50%</td>
+                    <td><span class="badge badge-pass">PASSED</span></td>
+                    <td>90分钟</td>
+                    <td>请求量: 500, 错误率: 0.8000%, 平均延迟: 763ms</td>
+                </tr>
+                <tr>
+                    <td>全量发布</td>
+                    <td>100%</td>
+                    <td><span class="badge badge-pass">PASSED</span></td>
+                    <td>0分钟</td>
+                    <td>请求量: 300, 错误率: 1.0000%, 平均延迟: 800ms</td>
+                </tr></tbody>
+                </table>
+            </div>
+        </div>
+        
+            <div class="section">
+                <div class="section-title">四、回滚记录</div>
+                <div class="section-body">
+                    <p style="color:#7f8c8d;">本次发布未触发回滚</p>
+                </div>
+            </div>
+        
+        <div class="section">
+            <div class="section-title">五、合规审计说明</div>
+            <div class="section-body">
+                <div class="compliance-item compliance-warning">本次发布全流程符合GSP合规要求，无偏差项</div>
+            </div>
+        </div>
+
+        <div class="footer">
+            本报表由医药冷链温湿度监控系统版本发布与智能回滚自动化平台自动生成 | 符合GSP合规审计要求
+        </div>
+    </div>
+</body>
+</html>
