@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>审计明细 - REL-20260621075358-7dd5f851</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Microsoft YaHei', sans-serif; background: #f5f7fa; color: #333; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .header { background: linear-gradient(135deg, #1a5276, #2980b9); color: white; padding: 30px; border-radius: 8px 8px 0 0; }
+        .header h1 { font-size: 24px; margin-bottom: 10px; }
+        .header .meta { font-size: 14px; opacity: 0.9; }
+        .section { background: white; margin: 16px 0; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); overflow: hidden; }
+        .section-title { background: #f8f9fa; padding: 16px 24px; font-size: 18px; font-weight: bold; border-bottom: 2px solid #2980b9; color: #1a5276; }
+        .section-body { padding: 24px; }
+        table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+        th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #f8f9fa; font-weight: 600; color: #555; white-space: nowrap; }
+        .badge { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+        .badge-pass { background: #d5f5e3; color: #1e8449; }
+        .badge-fail { background: #fadbd8; color: #c0392b; }
+        .badge-warn { background: #fef9e7; color: #b7950b; }
+        .badge-info { background: #d6eaf8; color: #2471a3; }
+        .footer { text-align: center; padding: 20px; color: #7f8c8d; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>审计明细导出</h1>
+            <div class="meta">
+                发布单号: REL-20260621075358-7dd5f851 | 版本: 4.0.0 |
+                类型: 常规迭代 |
+                导出时间: 2026-06-21T07:56:08.662020
+            </div>
+        </div>
+        <div class="section">
+            <div class="section-title">审计事件明细 (共 10 条)</div>
+            <div class="section-body">
+                <table>
+                    <thead><tr><th>时间</th><th>分类</th><th>事件</th><th>action</th><th>操作人</th><th>详情</th><th>电子签名</th></tr></thead>
+                    <tbody>
+            <tr>
+                <td>2026-06-21T07:53:58.243860</td>
+                <td><span class="badge badge-info">创建</span></td>
+                <td>创建发布单</td>
+                <td>release_created</td>
+                <td>tester</td>
+                <td>"{\"version\": \"4.0.0\", \"previous_version\": \"3.9.0\", \"release_type\": \"routine\", \"description\": \"常规迭代\"}"</td>
+                <td>SIG-tester-3f697305af8d</td>
+            </tr>
+            <tr>
+                <td>2026-06-21T07:53:58.251658</td>
+                <td><span class="badge badge-pass">校验</span></td>
+                <td>前置校验完成</td>
+                <td>pre_check_completed</td>
+                <td>system</td>
+                <td>"{\"overall_passed\": true, \"check_count\": 4, \"failed_checks\": []}"</td>
+                <td>SIG-SYSTEM-4ad92b06e91b</td>
+            </tr>
+            <tr>
+                <td>2026-06-21T07:53:58.257467</td>
+                <td><span class="badge badge-warn">审批</span></td>
+                <td>审批流初始化</td>
+                <td>approval_initiated</td>
+                <td>system</td>
+                <td>"{\"release_type\": \"routine\", \"flow_type\": \"serial\"}"</td>
+                <td>SIG-SYSTEM-4104b9f9c721</td>
+            </tr>
+            <tr>
+                <td>2026-06-21T07:54:58.746792</td>
+                <td><span class="badge badge-warn">审批</span></td>
+                <td>审批通过</td>
+                <td>approval_approve</td>
+                <td>李主管</td>
+                <td>"{\"level\": 1, \"role\": \"quality\", \"comment\": \"\", \"is_post_sign\": false}"</td>
+                <td>SIG-李主管-5e62cd37b486</td>
+            </tr>
+            <tr>
+                <td>2026-06-21T07:54:58.863412</td>
+                <td><span class="badge badge-warn">审批</span></td>
+                <td>审批通过</td>
+                <td>approval_approve</td>
+                <td>王经理</td>
+                <td>"{\"level\": 2, \"role\": \"logistics\", \"comment\": \"\", \"is_post_sign\": false}"</td>
+                <td>SIG-王经理-51cfd513ad33</td>
+            </tr>
+            <tr>
+                <td>2026-06-21T07:54:58.983223</td>
+                <td><span class="badge badge-warn">审批</span></td>
+                <td>审批通过</td>
+                <td>approval_approve</td>
+                <td>张总</td>
+                <td>"{\"level\": 3, \"role\": \"quality_head\", \"comment\": \"\", \"is_post_sign\": false}"</td>
+                <td>SIG-张总-96d219d106b2</td>
+            </tr>
+            <tr>
+                <td>2026-06-21T07:54:58.989088</td>
+                <td><span class="badge badge-warn">审批</span></td>
+                <td>审批流完成</td>
+                <td>approval_completed</td>
+                <td>system</td>
+                <td>"{\"release_type\": \"routine\", \"total_levels\": 3}"</td>
+                <td>SIG-SYSTEM-362dec61c0ec</td>
+            </tr>
+            <tr>
+                <td>2026-06-21T07:55:26.414205</td>
+                <td><span class="badge badge-info">发布</span></td>
+                <td>灰度发布启动</td>
+                <td>canary_started</td>
+                <td>system</td>
+                <td>"{\"stages\": 4, \"snapshot_version\": \"3.9.0\"}"</td>
+                <td>SIG-SYSTEM-9fb20e90fe03</td>
+            </tr>
+            <tr>
+                <td>2026-06-21T07:55:29.733560</td>
+                <td><span class="badge badge-info">发布</span></td>
+                <td>发布完成</td>
+                <td>release_completed</td>
+                <td>system</td>
+                <td>"{\"version\": \"4.0.0\"}"</td>
+                <td>SIG-SYSTEM-b10a01c5ba4e</td>
+            </tr>
+            <tr>
+                <td>2026-06-21T07:55:29.736152</td>
+                <td><span class="badge badge-pass">报表</span></td>
+                <td>复盘报表生成</td>
+                <td>review_report_generated</td>
+                <td>system</td>
+                <td>"{\"report_generated\": true}"</td>
+                <td>SIG-SYSTEM-325e794fc0d7</td>
+            </tr></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="footer">本报表由医药冷链温湿度监控系统版本发布与智能回滚自动化平台自动生成 | 符合GSP合规审计要求</div>
+    </div>
+</body>
+</html>

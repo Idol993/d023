@@ -625,23 +625,283 @@ def run_full_release(platform: ReleasePlatform, args: argparse.Namespace) -> dic
     print(f"  发布单号: {release_id}")
     print(f"  当前状态: pending_approval")
     print(f"\n  下一步操作:")
-    print(f"    1. 查看发布单状态:")
-    print(f"       python main.py status --release-id {release_id}")
-    if args.type == "routine":
-        print(f"    2. 执行三级审批:")
-        print(f"       python main.py approve --release-id {release_id} --level 1 --role quality --action approve --approver 质量团队")
-        print(f"       python main.py approve --release-id {release_id} --level 1 --role logistics --action approve --approver 物流团队")
-        print(f"       python main.py approve --release-id {release_id} --level 2 --role quality_head --action approve --approver 质量负责人")
+    print(f"    1. 查看审批节点详情:")
+    print(f"       python main.py approvals --release-id {release_id}")
+    print(f"    2. 按顺序执行审批:")
+
+    flow = platform._load_approval_flow(release_id)
+    if flow:
+        step = 1
+        for record in flow.records:
+            if record.action.value == "pending":
+                role_display = ApprovalEngine.APPROVER_MAP.get(record.role, record.role)
+                print(f"       python main.py approve --release-id {release_id} --level {record.level} --role {record.role} --action approve --approver '{role_display}'")
+                step += 1
     else:
-        print(f"    2. 执行并行审批 + 最终确认:")
-        print(f"       python main.py approve --release-id {release_id} --level 1 --role quality --action approve --approver 质量团队")
-        print(f"       python main.py approve --release-id {release_id} --level 1 --role logistics --action approve --approver 物流团队")
-        print(f"       python main.py approve --release-id {release_id} --level 2 --role quality_head --action approve --approver 质量负责人")
+        if args.type == "routine":
+            print(f"       python main.py approve --release-id {release_id} --level 1 --role quality --action approve --approver '质量团队'")
+            print(f"       python main.py approve --release-id {release_id} --level 2 --role logistics --action approve --approver '物流团队'")
+            print(f"       python main.py approve --release-id {release_id} --level 3 --role quality_head --action approve --approver '质量负责人'")
+        else:
+            print(f"       python main.py approve --release-id {release_id} --level 1 --role quality --action approve --approver '质量团队'")
+            print(f"       python main.py approve --release-id {release_id} --level 1 --role logistics --action approve --approver '物流团队'")
+            print(f"       python main.py approve --release-id {release_id} --level 2 --role quality_head --action approve --approver '质量负责人'")
     print(f"    3. 全部审批通过后启动灰度发布:")
     print(f"       python main.py deploy --release-id {release_id}")
     print(f"{'='*60}\n")
 
     return {"success": True, "release_id": release_id, "status": "pending_approval"}
+
+
+ACTION_DISPLAY = {
+    "release_created": "创建发布单",
+    "pre_check_completed": "前置校验完成",
+    "approval_initiated": "审批流初始化",
+    "approval_approve": "审批通过",
+    "approval_reject": "审批拒绝",
+    "approval_completed": "审批流完成",
+    "canary_started": "灰度发布启动",
+    "canary_failed": "灰度发布失败",
+    "rollback_executed": "回滚执行",
+    "rollback_failed": "回滚失败",
+    "release_completed": "发布完成",
+    "review_report_generated": "复盘报表生成",
+}
+
+ACTION_CATEGORY = {
+    "release_created": "创建",
+    "pre_check_completed": "校验",
+    "approval_initiated": "审批",
+    "approval_approve": "审批",
+    "approval_reject": "审批",
+    "approval_completed": "审批",
+    "canary_started": "发布",
+    "canary_failed": "发布",
+    "rollback_executed": "发布",
+    "rollback_failed": "发布",
+    "release_completed": "发布",
+    "review_report_generated": "报表",
+}
+
+
+def run_audit_export(platform: ReleasePlatform, args: argparse.Namespace) -> dict:
+    release_id = args.release_id
+    export_format = args.format
+
+    record_data = platform.db.get_release_record(release_id)
+    if not record_data:
+        print(f"[ERROR] 发布单不存在: {release_id}")
+        return {"success": False}
+
+    logs = platform.audit_engine.get_audit_trail(release_id)
+    if not logs:
+        print(f"[WARN] 发布单无审计日志: {release_id}")
+        return {"success": False}
+
+    sorted_logs = sorted(logs, key=lambda x: x.get("timestamp", ""))
+
+    audit_entries = []
+    for log in sorted_logs:
+        action = log.get("action", "")
+        entry = {
+            "timestamp": log.get("timestamp", ""),
+            "action": action,
+            "action_display": ACTION_DISPLAY.get(action, action),
+            "category": ACTION_CATEGORY.get(action, "其他"),
+            "actor": log.get("actor", ""),
+            "details": log.get("details", {}),
+            "electronic_signature": log.get("electronic_signature", ""),
+        }
+        audit_entries.append(entry)
+
+    output_dir = platform.audit_engine.report_output_dir
+    os.makedirs(output_dir, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    if export_format == "json":
+        filepath = os.path.join(output_dir, f"audit_{release_id}_{timestamp}.json")
+        export_data = {
+            "release_id": release_id,
+            "version": record_data.get("version", ""),
+            "release_type": record_data.get("release_type", ""),
+            "status": record_data.get("status", ""),
+            "exported_at": datetime.now().isoformat(),
+            "total_entries": len(audit_entries),
+            "audit_trail": audit_entries,
+        }
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(export_data, f, ensure_ascii=False, indent=2, default=str)
+    else:
+        filepath = os.path.join(output_dir, f"audit_{release_id}_{timestamp}.html")
+        html = _build_audit_html(release_id, record_data, audit_entries)
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(html)
+
+    print(f"\n审计明细导出完成")
+    print(f"  发布单号: {release_id}")
+    print(f"  导出格式: {export_format.upper()}")
+    print(f"  审计条目: {len(audit_entries)} 条")
+    print(f"  文件路径: {os.path.abspath(filepath)}\n")
+
+    return {"success": True, "filepath": filepath}
+
+
+def _build_audit_html(release_id: str, record_data: dict, entries: list) -> str:
+    rows = ""
+    for e in entries:
+        cat_badge = {
+            "创建": "badge-info", "校验": "badge-pass",
+            "审批": "badge-warn", "发布": "badge-info", "报表": "badge-pass",
+        }.get(e["category"], "badge-info")
+        rows += f"""
+            <tr>
+                <td>{e['timestamp']}</td>
+                <td><span class="badge {cat_badge}">{e['category']}</span></td>
+                <td>{e['action_display']}</td>
+                <td>{e['action']}</td>
+                <td>{e['actor']}</td>
+                <td>{json.dumps(e['details'], ensure_ascii=False) if e['details'] else '-'}</td>
+                <td>{e['electronic_signature'] or '-'}</td>
+            </tr>"""
+
+    return f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>审计明细 - {release_id}</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: 'Microsoft YaHei', sans-serif; background: #f5f7fa; color: #333; padding: 20px; }}
+        .container {{ max-width: 1200px; margin: 0 auto; }}
+        .header {{ background: linear-gradient(135deg, #1a5276, #2980b9); color: white; padding: 30px; border-radius: 8px 8px 0 0; }}
+        .header h1 {{ font-size: 24px; margin-bottom: 10px; }}
+        .header .meta {{ font-size: 14px; opacity: 0.9; }}
+        .section {{ background: white; margin: 16px 0; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); overflow: hidden; }}
+        .section-title {{ background: #f8f9fa; padding: 16px 24px; font-size: 18px; font-weight: bold; border-bottom: 2px solid #2980b9; color: #1a5276; }}
+        .section-body {{ padding: 24px; }}
+        table {{ width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px; }}
+        th, td {{ padding: 10px 12px; text-align: left; border-bottom: 1px solid #eee; }}
+        th {{ background: #f8f9fa; font-weight: 600; color: #555; white-space: nowrap; }}
+        .badge {{ display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }}
+        .badge-pass {{ background: #d5f5e3; color: #1e8449; }}
+        .badge-fail {{ background: #fadbd8; color: #c0392b; }}
+        .badge-warn {{ background: #fef9e7; color: #b7950b; }}
+        .badge-info {{ background: #d6eaf8; color: #2471a3; }}
+        .footer {{ text-align: center; padding: 20px; color: #7f8c8d; font-size: 12px; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>审计明细导出</h1>
+            <div class="meta">
+                发布单号: {release_id} | 版本: {record_data.get('version', '-')} |
+                类型: {'常规迭代' if record_data.get('release_type') == 'routine' else '紧急热修复'} |
+                导出时间: {datetime.now().isoformat()}
+            </div>
+        </div>
+        <div class="section">
+            <div class="section-title">审计事件明细 (共 {len(entries)} 条)</div>
+            <div class="section-body">
+                <table>
+                    <thead><tr><th>时间</th><th>分类</th><th>事件</th><th>action</th><th>操作人</th><th>详情</th><th>电子签名</th></tr></thead>
+                    <tbody>{rows}</tbody>
+                </table>
+            </div>
+        </div>
+        <div class="footer">本报表由医药冷链温湿度监控系统版本发布与智能回滚自动化平台自动生成 | 符合GSP合规审计要求</div>
+    </div>
+</body>
+</html>"""
+
+
+def run_approvals(platform: ReleasePlatform, args: argparse.Namespace) -> dict:
+    release_id = args.release_id
+    record_data = platform.db.get_release_record(release_id)
+    if not record_data:
+        print(f"[ERROR] 发布单不存在: {release_id}")
+        return {"success": False}
+
+    flow = platform._load_approval_flow(release_id)
+    if not flow:
+        print(f"[WARN] 发布单尚未初始化审批流 (当前状态: {record_data['status']})")
+        return {"success": False}
+
+    release_type = flow.release_type.value
+    is_hotfix = release_type == "hotfix"
+
+    print(f"\n审批节点详情 [release_id={release_id}]")
+    print(f"{'='*60}")
+    print(f"  发布类型: {'紧急热修复' if is_hotfix else '常规迭代'}")
+    print(f"  审批流状态: {'已完成' if flow.is_completed else '已拒绝' if flow.is_rejected else '进行中'}")
+
+    if is_hotfix:
+        if flow.hotfix_reason:
+            print(f"  紧急原因: {flow.hotfix_reason}")
+        if flow.deviation_report_id:
+            print(f"  偏差报告: {flow.deviation_report_id}")
+
+    if is_hotfix:
+        level_groups = {}
+        for record in flow.records:
+            level_groups.setdefault(record.level, []).append(record)
+
+        for lvl in sorted(level_groups.keys()):
+            level_records = level_groups[lvl]
+            if lvl == 1:
+                print(f"\n  [并行审批] 第{lvl}级 - 质量与物流并行评审:")
+            elif lvl == 2:
+                print(f"\n  [最终确认] 第{lvl}级 - 质量负责人最终放行:")
+            else:
+                print(f"\n  第{lvl}级:")
+
+            for r in level_records:
+                role_display = ApprovalEngine.APPROVER_MAP.get(r.role, r.role)
+                status_icon = {"approve": "[PASS]", "reject": "[REJECT]", "pending": "[PENDING]"}.get(r.action.value, "[?]")
+                print(f"    {status_icon} {role_display}")
+                print(f"       级别: {r.level}  角色: {r.role}")
+                if r.action.value != "pending":
+                    print(f"       审批人: {r.approver}")
+                    print(f"       时间: {r.timestamp or '-'}")
+                    if r.comment:
+                        print(f"       意见: {r.comment}")
+                    if r.is_post_sign:
+                        print(f"       [事后补签]")
+                else:
+                    print(f"       待审批")
+    else:
+        print()
+        for record in flow.records:
+            role_display = ApprovalEngine.APPROVER_MAP.get(record.role, record.role)
+            status_icon = {"approve": "[PASS]", "reject": "[REJECT]", "pending": "[PENDING]"}.get(record.action.value, "[?]")
+            print(f"  {status_icon} 第{record.level}级 - {role_display}")
+            print(f"     角色: {record.role}")
+            if record.action.value != "pending":
+                print(f"     审批人: {record.approver}")
+                print(f"     时间: {record.timestamp or '-'}")
+                if record.comment:
+                    print(f"     意见: {record.comment}")
+            else:
+                print(f"     待审批")
+
+    pending_count = sum(1 for r in flow.records if r.action.value == "pending")
+    approved_count = sum(1 for r in flow.records if r.action.value == "approve")
+    rejected_count = sum(1 for r in flow.records if r.action.value == "reject")
+
+    print(f"\n  汇总: 通过 {approved_count} / 待审批 {pending_count} / 拒绝 {rejected_count} (共 {len(flow.records)} 个节点)")
+
+    if not flow.is_completed and not flow.is_rejected:
+        pending_roles = [ApprovalEngine.APPROVER_MAP.get(r.role, r.role) for r in flow.records if r.action.value == "pending"]
+        if pending_roles:
+            print(f"  卡在: {', '.join(pending_roles)}")
+            next_r = next((r for r in flow.records if r.action.value == "pending"), None)
+            if next_r:
+                print(f"\n  下一步审批命令:")
+                print(f"    python main.py approve --release-id {release_id} --level {next_r.level} --role {next_r.role} --action approve --approver '{ApprovalEngine.APPROVER_MAP.get(next_r.role, next_r.role)}'")
+
+    print(f"{'='*60}\n")
+    return {"success": True}
 
 
 def run_deploy(platform: ReleasePlatform, args: argparse.Namespace) -> dict:
@@ -653,25 +913,73 @@ def run_deploy(platform: ReleasePlatform, args: argparse.Namespace) -> dict:
 
     current_status = record_data["status"]
 
-    if current_status == ReleaseStatus.CANARY_DEPLOYING.value:
-        print(f"[WARN] 发布单正在灰度发布中，请等待...")
-    elif current_status == ReleaseStatus.FULLY_RELEASED.value:
-        print(f"[INFO] 发布单已全量发布完成，无需重复操作。")
-        return {"success": True}
-    elif current_status == ReleaseStatus.ROLLED_BACK.value:
-        print(f"[ERROR] 发布单已回滚，无法继续发布。请创建新版本发布单。")
-        return {"success": False}
-    elif current_status == ReleaseStatus.APPROVAL_REJECTED.value:
-        print(f"[ERROR] 发布单已被审批拒绝，无法继续发布。")
-        return {"success": False}
-    elif current_status != ReleaseStatus.APPROVAL_PASSED.value:
+    if current_status in [ReleaseStatus.CANARY_DEPLOYING.value, ReleaseStatus.FULLY_RELEASED.value,
+                          ReleaseStatus.ROLLED_BACK.value, ReleaseStatus.APPROVAL_REJECTED.value]:
+        if current_status == ReleaseStatus.CANARY_DEPLOYING.value:
+            print(f"[WARN] 发布单正在灰度发布中，请等待...")
+        elif current_status == ReleaseStatus.FULLY_RELEASED.value:
+            print(f"[INFO] 发布单已全量发布完成，无需重复操作。")
+            return {"success": True}
+        elif current_status == ReleaseStatus.ROLLED_BACK.value:
+            print(f"[ERROR] 发布单已回滚，无法继续发布。请创建新版本发布单。")
+            return {"success": False}
+        elif current_status == ReleaseStatus.APPROVAL_REJECTED.value:
+            print(f"[ERROR] 发布单已被审批拒绝，无法继续发布。")
+            return {"success": False}
+
+    if current_status != ReleaseStatus.APPROVAL_PASSED.value:
         if current_status == ReleaseStatus.PENDING_APPROVAL.value:
-            print(f"[ERROR] 发布单尚未完成审批 (当前状态: {current_status})")
-            print("  请先通过 approve 命令完成所有审批后再执行灰度发布。")
-            print(f"  查看审批状态: python main.py status --release-id {release_id}")
+            flow = platform._load_approval_flow(release_id)
+            if flow:
+                pending_roles = [ApprovalEngine.APPROVER_MAP.get(r.role, r.role)
+                                 for r in flow.records if r.action.value == "pending"]
+                rejected_roles = [ApprovalEngine.APPROVER_MAP.get(r.role, r.role)
+                                  for r in flow.records if r.action.value == "reject"]
+                print(f"[ERROR] 发布单尚未完成审批 (当前状态: {current_status})")
+                if pending_roles:
+                    print(f"  待审批: {', '.join(pending_roles)}")
+                if rejected_roles:
+                    print(f"  已拒绝: {', '.join(rejected_roles)}")
+                next_r = next((r for r in flow.records if r.action.value == "pending"), None)
+                if next_r:
+                    print(f"  下一步: python main.py approve --release-id {release_id} --level {next_r.level} --role {next_r.role} --action approve --approver '{ApprovalEngine.APPROVER_MAP.get(next_r.role, next_r.role)}'")
+            else:
+                print(f"[ERROR] 发布单尚未完成审批 (当前状态: {current_status})")
+                print("  请先通过 approve 命令完成所有审批后再执行灰度发布。")
         else:
             print(f"[ERROR] 发布单状态不允许启动灰度发布 (当前状态: {current_status})")
         return {"success": False}
+
+    print(f"\n{'='*60}")
+    print(f"  发布摘要 [release_id={release_id}]")
+    print(f"{'='*60}")
+    print(f"  版本: {record_data['previous_version']} -> {record_data['version']}")
+    print(f"  类型: {'常规迭代' if record_data['release_type'] == 'routine' else '紧急热修复'}")
+
+    pre_check_data = record_data.get("pre_check_report")
+    if pre_check_data:
+        try:
+            pcr = json.loads(pre_check_data)
+            passed_count = sum(1 for r in pcr.get("results", []) if r["status"] == "pass")
+            failed_count = sum(1 for r in pcr.get("results", []) if r["status"] == "fail")
+            print(f"  前置校验: 通过 {passed_count}/{passed_count + failed_count} 项")
+        except (json.JSONDecodeError, KeyError):
+            print(f"  前置校验: 已通过")
+    else:
+        print(f"  前置校验: 已通过")
+
+    flow = platform._load_approval_flow(release_id)
+    if flow:
+        approved_count = sum(1 for r in flow.records if r.action.value == "approve")
+        total_count = len(flow.records)
+        print(f"  审批完成: {approved_count}/{total_count} 个节点已通过")
+
+    canary_stages = platform.canary_engine.create_canary_stages()
+    stage_names = [s.name for s in canary_stages]
+    print(f"  灰度计划: {len(canary_stages)} 阶段")
+    for i, stage in enumerate(canary_stages):
+        print(f"    {i+1}. {stage.name} ({stage.weight_percent}%)")
+    print(f"{'='*60}")
 
     print(f"\n[1/2] 执行线路灰度发布 [release_id={release_id}]...")
     canary_result = platform.start_canary_release(release_id)
@@ -815,6 +1123,26 @@ def run_status(platform: ReleasePlatform, args: argparse.Namespace) -> dict:
     if not integrity["integrity_valid"] and integrity.get("issues"):
         for issue in integrity["issues"]:
             print(f"    - {issue}")
+
+    audit_logs = platform.audit_engine.get_audit_trail(args.release_id)
+    if audit_logs:
+        sorted_logs = sorted(audit_logs, key=lambda x: x.get("timestamp", ""))
+        key_actions = [
+            "approval_completed", "approval_reject",
+            "canary_started", "canary_failed",
+            "release_completed", "rollback_executed", "rollback_failed",
+            "review_report_generated",
+        ]
+        key_logs = [log for log in sorted_logs if log.get("action") in key_actions]
+        if key_logs:
+            print(f"\n  关键审计事件:")
+            for log in key_logs[-5:]:
+                action = log.get("action", "")
+                display = ACTION_DISPLAY.get(action, action)
+                ts = log.get("timestamp", "-")
+                actor = log.get("actor", "-")
+                print(f"    {ts}  {display}  ({actor})")
+
     print(f"{'='*50}\n")
 
     return result
@@ -855,8 +1183,15 @@ def main():
     status_parser = subparsers.add_parser("status", help="查询发布状态")
     status_parser.add_argument("--release-id", required=True, help="发布单号")
 
+    approvals_parser = subparsers.add_parser("approvals", help="查看审批节点详情")
+    approvals_parser.add_argument("--release-id", required=True, help="发布单号")
+
     deploy_parser = subparsers.add_parser("deploy", help="审批通过后执行灰度发布")
     deploy_parser.add_argument("--release-id", required=True, help="发布单号")
+
+    audit_parser = subparsers.add_parser("audit", help="导出审计明细")
+    audit_parser.add_argument("--release-id", required=True, help="发布单号")
+    audit_parser.add_argument("--format", choices=["json", "html"], default="json", help="导出格式")
 
     args = parser.parse_args()
 
@@ -872,10 +1207,14 @@ def main():
         run_pre_check_only(platform, args)
     elif args.command == "approve":
         run_approval_only(platform, args)
+    elif args.command == "approvals":
+        run_approvals(platform, args)
     elif args.command == "status":
         run_status(platform, args)
     elif args.command == "deploy":
         run_deploy(platform, args)
+    elif args.command == "audit":
+        run_audit_export(platform, args)
 
 
 if __name__ == "__main__":

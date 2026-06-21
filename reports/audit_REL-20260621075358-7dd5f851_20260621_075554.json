@@ -1,0 +1,100 @@
+{
+  "release_id": "REL-20260621075358-7dd5f851",
+  "version": "4.0.0",
+  "release_type": "routine",
+  "status": "fully_released",
+  "exported_at": "2026-06-21T07:55:54.388268",
+  "total_entries": 10,
+  "audit_trail": [
+    {
+      "timestamp": "2026-06-21T07:53:58.243860",
+      "action": "release_created",
+      "action_display": "创建发布单",
+      "category": "创建",
+      "actor": "tester",
+      "details": "{\"version\": \"4.0.0\", \"previous_version\": \"3.9.0\", \"release_type\": \"routine\", \"description\": \"常规迭代\"}",
+      "electronic_signature": "SIG-tester-3f697305af8d"
+    },
+    {
+      "timestamp": "2026-06-21T07:53:58.251658",
+      "action": "pre_check_completed",
+      "action_display": "前置校验完成",
+      "category": "校验",
+      "actor": "system",
+      "details": "{\"overall_passed\": true, \"check_count\": 4, \"failed_checks\": []}",
+      "electronic_signature": "SIG-SYSTEM-4ad92b06e91b"
+    },
+    {
+      "timestamp": "2026-06-21T07:53:58.257467",
+      "action": "approval_initiated",
+      "action_display": "审批流初始化",
+      "category": "审批",
+      "actor": "system",
+      "details": "{\"release_type\": \"routine\", \"flow_type\": \"serial\"}",
+      "electronic_signature": "SIG-SYSTEM-4104b9f9c721"
+    },
+    {
+      "timestamp": "2026-06-21T07:54:58.746792",
+      "action": "approval_approve",
+      "action_display": "审批通过",
+      "category": "审批",
+      "actor": "李主管",
+      "details": "{\"level\": 1, \"role\": \"quality\", \"comment\": \"\", \"is_post_sign\": false}",
+      "electronic_signature": "SIG-李主管-5e62cd37b486"
+    },
+    {
+      "timestamp": "2026-06-21T07:54:58.863412",
+      "action": "approval_approve",
+      "action_display": "审批通过",
+      "category": "审批",
+      "actor": "王经理",
+      "details": "{\"level\": 2, \"role\": \"logistics\", \"comment\": \"\", \"is_post_sign\": false}",
+      "electronic_signature": "SIG-王经理-51cfd513ad33"
+    },
+    {
+      "timestamp": "2026-06-21T07:54:58.983223",
+      "action": "approval_approve",
+      "action_display": "审批通过",
+      "category": "审批",
+      "actor": "张总",
+      "details": "{\"level\": 3, \"role\": \"quality_head\", \"comment\": \"\", \"is_post_sign\": false}",
+      "electronic_signature": "SIG-张总-96d219d106b2"
+    },
+    {
+      "timestamp": "2026-06-21T07:54:58.989088",
+      "action": "approval_completed",
+      "action_display": "审批流完成",
+      "category": "审批",
+      "actor": "system",
+      "details": "{\"release_type\": \"routine\", \"total_levels\": 3}",
+      "electronic_signature": "SIG-SYSTEM-362dec61c0ec"
+    },
+    {
+      "timestamp": "2026-06-21T07:55:26.414205",
+      "action": "canary_started",
+      "action_display": "灰度发布启动",
+      "category": "发布",
+      "actor": "system",
+      "details": "{\"stages\": 4, \"snapshot_version\": \"3.9.0\"}",
+      "electronic_signature": "SIG-SYSTEM-9fb20e90fe03"
+    },
+    {
+      "timestamp": "2026-06-21T07:55:29.733560",
+      "action": "release_completed",
+      "action_display": "发布完成",
+      "category": "发布",
+      "actor": "system",
+      "details": "{\"version\": \"4.0.0\"}",
+      "electronic_signature": "SIG-SYSTEM-b10a01c5ba4e"
+    },
+    {
+      "timestamp": "2026-06-21T07:55:29.736152",
+      "action": "review_report_generated",
+      "action_display": "复盘报表生成",
+      "category": "报表",
+      "actor": "system",
+      "details": "{\"report_generated\": true}",
+      "electronic_signature": "SIG-SYSTEM-325e794fc0d7"
+    }
+  ]
+}
